@@ -1,0 +1,14 @@
+name: 'okf-builder'
+acli_version: '1.5.0'
+agent_directory: 'okf_builder'
+region: 'us-east1'
+base_template: 'adk'
+generated_at: '2026-09-07T09:20:53.025310+00:00'
+language: 'python'
+create_params:
+  deployment_target: 'none'
+  session_type: 'in_memory'
+  cicd_runner: 'skip'
+  is_a2a: False
+  agent_gateway: False
+

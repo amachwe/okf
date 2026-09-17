@@ -1,0 +1,23 @@
+okf_version: "1.0"
+title: "Maximum Likelihood Estimation and Probability Distributions"
+id: mle-probability-distributions
+language: en
+description: "A self-contained instructional bundle on probability models, likelihood, and maximum likelihood estimation."
+learning_objectives:
+  - "Distinguish a probability model from a likelihood function."
+  - "Derive maximum likelihood estimators for common distributions."
+  - "Check regularity conditions, parameter constraints, and boundary cases."
+  - "Interpret MLE uncertainty using Fisher information and asymptotic normality."
+contents:
+  - overview.md
+  - lesson.md
+  - exercises.md
+  - solutions.md
+  - references.md
+license: CC-BY-4.0
+keywords:
+  - statistics
+  - probability
+  - maximum-likelihood-estimation
+  - inference
+  - distributions

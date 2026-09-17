@@ -1,0 +1,8 @@
+skills: |
+  Windows
+
+  Names are case-insensitive. Spaces allowed, but prefer hyphens. Forbidden characters: < > : " / \ | ? *. No trailing dots or spaces. Avoid reserved names: CON, PRN, AUX, NUL, COM1–9, LPT1–9. Keep full paths under 260 characters.
+
+  Both
+
+  Keep names short, descriptive, ASCII-only. Use YYYY-MM-DD for dates so names sort chronologically.
