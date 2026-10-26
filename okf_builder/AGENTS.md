@@ -6,14 +6,15 @@ are in [README.md](README.md).
 ## What this is
 
 A single-file Google ADK agent. `agent.py` builds `root_agent`, an
-`LlmAgent` that runs on a local Ollama model (via `litellm`) and exposes
-five Python functions as tools. There is no framework/CLI code here beyond
+`LlmAgent` that runs on the model selected by `MODEL` (currently an OpenAI
+model; a local Ollama model is also defined), both via `litellm`, and
+exposes six Python functions as tools. There is no framework/CLI code here beyond
 that — the ADK runtime (`adk run` / `adk web`) imports `agent.py` and calls
 `root_agent` itself.
 
 ## Repo layout
 
-- `agent.py` — the entire implementation: config/prompt loading, the five
+- `agent.py` — the entire implementation: config/prompt loading, the six
   tools, and the `root_agent` definition.
 - `README.md` — setup and usage for humans.
 - No test suite, no build step, no linter config currently exist in this
@@ -42,9 +43,9 @@ they're present when reasoning about this repo in isolation — see
   no bare `except:`; catch the narrowest applicable exception type and
   return a message that includes the underlying error.
 - **Path handling goes through `_resolve_path`.** All file tools resolve
-  `path` against `config["path-root"]` via `_resolve_path`, then join the
-  filename with `os.path.join`. Don't string-concatenate paths directly —
-  that reintroduced separator bugs once already (see git history).
+  `path` and, when present, `name` through `_resolve_path`; it rejects paths
+  that resolve outside `config["path-root"]`. Don't join paths separately or
+  string-concatenate them.
 - **No secrets in source.** `search`'s Tavily API key must keep coming from
   the `TAVILY_API_KEY` environment variable (`TAVILY_API_KEY_ENV_VAR`), not
   a literal string — a hardcoded key was previously committed here and had

@@ -1,8 +1,8 @@
 """Agent definition for the OKF Builder.
 
 Loads configuration and the instruction prompt from YAML files, then wires
-up a Google ADK agent backed by a local Ollama model with file-system and
-web-search tools.
+up a Google ADK agent backed by an OpenAI or local Ollama model (via
+litellm) with file-system and web-search tools.
 """
 
 import os
@@ -41,9 +41,17 @@ if USE_LITE_LLM:
 instruction = prompt["skills"] + "\nFollow user instructions."
 
 
-def _resolve_path(path: str) -> str:
-    """Join the configured root with a path relative to it."""
-    return os.path.join(config["path-root"], path)
+def _resolve_path(path: str, name: str = "") -> str:
+    """Resolve a path under the configured root, rejecting escapes."""
+    root = os.path.realpath(config["path-root"])
+    full_path = os.path.realpath(os.path.join(root, path, name))
+    try:
+        common_path = os.path.commonpath((root, full_path))
+    except ValueError:
+        raise ValueError("path is outside the configured root") from None
+    if os.path.normcase(common_path) != os.path.normcase(root):
+        raise ValueError("path is outside the configured root")
+    return full_path
 
 
 def write_file(path: str, name: str, content: str) -> str:
@@ -59,17 +67,19 @@ def write_file(path: str, name: str, content: str) -> str:
 
     Returns:
         A message confirming the file was written, or an error message if
-        the write failed.
+        the path was outside the configured root or the write failed.
     """
-    directory = _resolve_path(path)
-    full_path = os.path.join(directory, name)
     try:
+        full_path = _resolve_path(path, name)
+        directory = os.path.dirname(full_path)
         os.makedirs(directory, exist_ok=True)
-        with open(full_path, "w") as f:
+        with open(full_path, "w", encoding="utf-8") as f:
             f.write(content)
         return f"Wrote: {full_path}"
+    except ValueError as e:
+        return f"Error writing file: {e}"
     except OSError as e:
-        return f"Error writing file: {full_path} ({e})"
+        return f"Error writing file: {e}"
 
 
 def read_file(path: str, name: str) -> str:
@@ -82,16 +92,20 @@ def read_file(path: str, name: str) -> str:
 
     Returns:
         The file's text content, or a message describing why it could not
-        be read (not found, or an I/O error).
+        be read (not found, an I/O error, or invalid UTF-8 text).
     """
-    full_path = os.path.join(_resolve_path(path), name)
-    if not os.path.exists(full_path):
-        return f"File: {name} not found at path {path}"
     try:
-        with open(full_path, "r") as f:
+        full_path = _resolve_path(path, name)
+        if not os.path.exists(full_path):
+            return f"File: {name} not found at path {path}"
+        with open(full_path, "r", encoding="utf-8") as f:
             return f.read()
+    except UnicodeError as e:
+        return f"Error reading file: {e}"
+    except ValueError as e:
+        return f"Error reading file: {e}"
     except OSError as e:
-        return f"Error reading file: {full_path} ({e})"
+        return f"Error reading file: {e}"
 
 
 def read_pdf_file(path: str, name: str) -> str:
@@ -106,17 +120,21 @@ def read_pdf_file(path: str, name: str) -> str:
         The file's text content, or a message describing why it could not
         be read (not found, or an unreadable/corrupt/encrypted PDF).
     """
-    full_path = os.path.join(_resolve_path(path), name)
-    if not os.path.exists(full_path):
-        return f"File: {name} not found at path {path}"
     try:
+        full_path = _resolve_path(path, name)
+        if not os.path.exists(full_path):
+            return f"File: {name} not found at path {path}"
         reader = pypdf.PdfReader(full_path)
         text = ""
         for idx, page in enumerate(reader.pages):
             text += (page.extract_text() or "") + f"\n\n {idx}  \n\n"
         return text
+    except ValueError as e:
+        return f"Error reading file: {e}"
     except (OSError, pypdf.errors.PyPdfError) as e:
-        return f"Error reading file: {full_path} ({e})"
+        return f"Error reading file: {e}"
+    except Exception as e:  # malformed PDFs can raise KeyError, struct.error, etc.
+        return f"Error reading file: {e}"
 
 
 def read_directory(path: str) -> str:
@@ -130,13 +148,15 @@ def read_directory(path: str) -> str:
         Newline-separated entry names, or a message if the path does not
         exist or could not be read.
     """
-    full_path = _resolve_path(path)
-    if not os.path.exists(full_path):
-        return f"Path not found: {full_path}"
     try:
+        full_path = _resolve_path(path)
+        if not os.path.exists(full_path):
+            return f"Path not found: {full_path}"
         return "\n".join(os.listdir(full_path))
+    except ValueError as e:
+        return f"Error reading path: {e}"
     except OSError as e:
-        return f"Error reading path: {full_path} ({e})"
+        return f"Error reading path: {e}"
 
 
 def remove_file(path: str, name: str) -> str:
@@ -151,14 +171,16 @@ def remove_file(path: str, name: str) -> str:
         A message confirming the removal, or an error message if the file
         was not found or could not be removed.
     """
-    full_path = os.path.join(_resolve_path(path), name)
-    if not os.path.exists(full_path):
-        return f"File: {name} not found at path {path}"
     try:
+        full_path = _resolve_path(path, name)
+        if not os.path.exists(full_path):
+            return f"File: {name} not found at path {path}"
         os.remove(full_path)
         return f"File removed: {full_path}"
+    except ValueError as e:
+        return f"Error removing the file: {e}"
     except OSError as e:
-        return f"Error removing the file: {full_path} ({e})"
+        return f"Error removing the file: {e}"
 
 
 def _fetch_page_text(url: str) -> str:
@@ -202,12 +224,13 @@ def search(query: str) -> str:
 
     candidates = ""
     for r in results:
-        if "edu" in r["url"] or "wikipedia" in r["url"]:
+        url = r.get("url", "")
+        if "edu" in url or "wikipedia" in url:
             try:
-                content = _fetch_page_text(r["url"])
+                content = _fetch_page_text(url)
             except requests.RequestException:
-                content = r["content"]  # fall back to Tavily's own snippet
-            candidates += f'\nURL: {r["url"]}\nContent: {content}\n'
+                content = r.get("content", "")  # fall back to Tavily's own snippet
+            candidates += f"\nURL: {url}\nContent: {content}\n"
 
     return candidates if candidates else "No results"
 

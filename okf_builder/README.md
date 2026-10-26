@@ -1,7 +1,7 @@
 # okf_builder
 
-A Google ADK agent (`root_agent` in [agent.py](agent.py)) backed by a local
-Ollama model, with tools for reading/writing files and searching the web via
+A Google ADK agent (`root_agent` in [agent.py](agent.py)) backed by an
+OpenAI or local Ollama model (via `litellm`), with tools for reading/writing files and searching the web via
 Tavily.
 
 See [AGENTS.md](AGENTS.md) for conventions and context aimed at AI coding
@@ -61,16 +61,17 @@ as soon as the module loads.
 | `search(query)` | Search the web via Tavily, keep only `.edu`/Wikipedia results, and return their fetched page text. |
 
 For all file tools, `path` is relative to `path-root` (from `config.yaml`)
-and must end in `/`; it must not include the filename.
+and must end in `/`; it must not include the filename. Paths are resolved
+before use, and operations outside `path-root` (including through symlinks)
+are rejected.
 
 ## Notes / known limitations
 
+- File operations cannot defend against another process replacing a validated
+  path with a symlink between validation and the operation.
 - `search`'s domain filter is a plain substring check on the URL (`"edu" in
   url or "wikipedia" in url`), so it can match unintended hosts (e.g. a
   domain containing "edu" outside the `.edu` TLD).
 - Page text fetched by `search` is a naive HTML-to-text extraction (via
   BeautifulSoup) and may include navigation/boilerplate text alongside the
   article content; it is capped at `MAX_PAGE_CHARS` (4000) characters.
-- The file tools operate only within `path-root` by convention, not by
-  enforcement — they don't currently guard against a caller passing `../`
-  segments to escape that root.
